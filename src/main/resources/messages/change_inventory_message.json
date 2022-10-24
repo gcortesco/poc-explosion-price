@@ -1,0 +1,8 @@
+{
+   "hotelId": 10156,
+   "rateId": "STD",
+   "roomId": "DBL",
+   "channelId": ["WEB", "APP"],
+   "inventory": 5,
+    "stayDate": "01/10/2022"
+}

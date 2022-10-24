@@ -1,0 +1,9 @@
+{
+  "contractId":"RIU-123",
+  "hotelId": 10157,
+  "rateId": "STD",
+  "roomId": "DBL",
+  "channelId": "WEB",
+  "inventory": 10,
+  "stayDate": "01/10/2023"
+}

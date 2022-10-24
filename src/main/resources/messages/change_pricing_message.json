@@ -1,0 +1,17 @@
+{
+   "hotelId": 10156,
+   "rateId": "STD",
+   "roomId": "DBL",
+     "boardId": "MP",
+   "channelId": ["WEB", "APP"],
+    "fromDay": "01/10/2022",
+    "toDay": "01/01/2023",
+     "priceDetail": {
+        "totalNet": 60,
+        "totalTax": 10,
+        "totalGross": 70,
+        "totalVax": 90,
+        "currency": "EUR"
+    }
+    
+ }
