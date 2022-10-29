@@ -5,7 +5,6 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
-import com.mongodb.client.result.UpdateResult;
 import com.riu.crs.poc_price_explosion_updates.dto.CloseSaleDto;
 import com.riu.crs.poc_price_explosion_updates.dto.NewContractInventoryDto;
 import com.riu.crs.poc_price_explosion_updates.dto.NewContractPriceDto;
@@ -28,12 +27,13 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 
 @Slf4j
 @SpringBootApplication
 public class PocPriceExplosionUpdatesApplication {
+
+    private static final int MONGO_THREADS_OFFSET = 4;
 
     private static final String TOPIC_PRICE = "denormalized_basic_pricing_data";
     private static final String TOPIC_INVENTORY = "denormalized_inventory_data";
@@ -41,6 +41,11 @@ public class PocPriceExplosionUpdatesApplication {
     private static final String pattern = "yyyy/MM/dd";
     private static final SimpleDateFormat sdf = new SimpleDateFormat(pattern);
     private static MongoTemplate mongoTemplate;
+    private static ExecutorService mongoExecutor;
+
+    private static int mongoPoolSize;
+
+    private static int mongoPoolThreadsActive;
 
     public static void main(String[] args) {
         SpringApplication.run(PocPriceExplosionUpdatesApplication.class, args);
@@ -55,6 +60,11 @@ public class PocPriceExplosionUpdatesApplication {
             executor.execute(new ReceivePriceMessage(consumerPrice));
             executor.execute(new ReceiveInventoryMessage(consumerInventory));
         }
+        // Mongo bulk executor
+        mongoPoolSize = args.length > 4 && !args[4].equalsIgnoreCase("0") ? Integer.parseInt(args[4]) : 100;
+        mongoPoolThreadsActive = mongoPoolSize;
+        mongoExecutor = Executors.newFixedThreadPool(mongoPoolSize);
+
     }
 
     static class ReceiveInventoryMessage implements Runnable {
@@ -80,12 +90,52 @@ public class PocPriceExplosionUpdatesApplication {
                     });
                     BulkOperations bulk = mongoTemplate.bulkOps(BulkOperations.BulkMode.UNORDERED, "poc");
                     bulk.updateMulti(pairs);
-                    log.info("Inventory documents updated: " + bulk.execute().getModifiedCount());
+                    //log.info("Inventory documents updated: " + bulk.execute().getModifiedCount());
+                    System.out.println("Numero de hilos mongo: ");
+                    if (mongoExecutor instanceof ThreadPoolExecutor) {
+                        System.out.println(
+                                " " +
+                                        ((ThreadPoolExecutor) mongoExecutor).getActiveCount()
+                        );
+                        mongoPoolThreadsActive =  ((ThreadPoolExecutor) mongoExecutor).getActiveCount();
+                    }
+                    System.out.println("---");
+                    while (mongoPoolThreadsActive > (mongoPoolSize - MONGO_THREADS_OFFSET)) {
+                        Thread.sleep(50);
+                        log.info("Waiting for mongo thread...");
+                        System.out.println("Numero de hilos mongo: ");
+                        if (mongoExecutor instanceof ThreadPoolExecutor) {
+                            System.out.println(
+                                    " " +
+                                            ((ThreadPoolExecutor) mongoExecutor).getActiveCount()
+                            );
+                            mongoPoolThreadsActive =  ((ThreadPoolExecutor) mongoExecutor).getActiveCount();
+                        }
+                        System.out.println("---");
+                    }
+                    mongoExecutor.execute(new BulkDataToMongo(bulk,"Inventory"));
                     consumer.commitSync();
                 }
             }
         }
     }
+
+    static class BulkDataToMongo implements Runnable {
+
+        private BulkOperations bulk;
+        private String collectionToUpdate;
+
+        public BulkDataToMongo(BulkOperations bulk, String collectionToUpdate) {
+            this.bulk = bulk;
+            this.collectionToUpdate = collectionToUpdate;
+        }
+
+        @Override
+        public void run() {
+            log.info(collectionToUpdate+" documents updated: " + bulk.execute().getModifiedCount());
+        }
+    }
+
 
     static class ReceivePriceMessage implements Runnable {
         Consumer<Long, String> consumer;
@@ -113,9 +163,32 @@ public class PocPriceExplosionUpdatesApplication {
                             log.error(e.getMessage());
                         }
                     });
+
                     BulkOperations bulk = mongoTemplate.bulkOps(BulkOperations.BulkMode.UNORDERED, "poc");
                     bulk.updateMulti(pairs);
-                    log.info("Price documents updated: " + bulk.execute().getModifiedCount());
+                    System.out.println("Numero de hilos mongo: ");
+                    if (mongoExecutor instanceof ThreadPoolExecutor) {
+                        System.out.println(
+                                " " +
+                                        ((ThreadPoolExecutor) mongoExecutor).getActiveCount()
+                        );
+                        mongoPoolThreadsActive =  ((ThreadPoolExecutor) mongoExecutor).getActiveCount();
+                    }
+                    System.out.println("---");
+                    while (mongoPoolThreadsActive > (mongoPoolSize - MONGO_THREADS_OFFSET)) {
+                        Thread.sleep(100);
+                        System.out.println("Numero de hilos mongo: ");
+                        if (mongoExecutor instanceof ThreadPoolExecutor) {
+                            System.out.println(
+                                    " " +
+                                            ((ThreadPoolExecutor) mongoExecutor).getActiveCount()
+                            );
+                            mongoPoolThreadsActive =  ((ThreadPoolExecutor) mongoExecutor).getActiveCount();
+                        }
+                        System.out.println("---");
+                        //log.info("Waiting for mongo thread...");
+                    }
+                    mongoExecutor.execute(new BulkDataToMongo(bulk,"Price"));
                     consumer.commitSync();
                 }
             }
